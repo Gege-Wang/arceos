@@ -68,9 +68,12 @@ log-level-info = ["axfeat/log-level-info"]
 log-level-debug = ["axfeat/log-level-debug"]
 log-level-trace = ["axfeat/log-level-trace"]
 
+
 [dependencies]
 axfeat = { path = "../../api/axfeat" }
 arceos_api = { path = "../../api/arceos_api" }
 axio = { path = "../../crates/axio" }
 axerrno = { path = "../../crates/axerrno" }
 spinlock = { path = "../../crates/spinlock" }
+hashbrown = { version = "0.14", default-features = false }
+axhal = {path = "../../modules/axhal"} 

@@ -470,7 +470,9 @@ dependencies = [
  "arceos_api",
  "axerrno",
  "axfeat",
+ "axhal",
  "axio",
+ "hashbrown",
  "spinlock",
 ]
 

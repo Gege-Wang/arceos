@@ -10,6 +10,7 @@
 #[macro_use]
 extern crate log;
 extern crate alloc;
+//use core::alloc;
 
 mod page;
 

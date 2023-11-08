@@ -17,7 +17,7 @@ macro_rules! print {
 #[macro_export]
 macro_rules! println {
     () => { $crate::print!("\n") };
-    ($($arg:tt)*) => {
-        $crate::io::__print_impl(format_args!("{}\n", format_args!($($arg)*)));
+    ($color_code:expr, $($arg:tt)*) => {
+        $crate::io::__print_impl(format_args!(concat!("\x1B[", $color_code, "m{}\x1B[0m\n"), format_args!($($arg)*)));
     }
 }

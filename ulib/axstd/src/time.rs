@@ -2,7 +2,7 @@
 
 use arceos_api::time::AxTimeValue;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
-
+pub use axhal::time;
 pub use core::time::Duration;
 
 /// A measurement of a monotonically nondecreasing clock.
