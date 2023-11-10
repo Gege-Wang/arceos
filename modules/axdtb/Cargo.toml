@@ -1,0 +1,14 @@
+[package]
+name = "axdtb"
+version = "0.1.0"
+edition = "2021"
+authors = ["Miyamo <wanggege22s@ict.ac.cn>"]
+description = "ArceOS dtb_parser module"
+license = "GPL-3.0-or-later OR Apache-2.0"
+homepage = "https://github.com/rcore-os/arceos"
+
+
+[dependencies]
+axlog = { path = "../axlog" }
+log = "0.4"
+fdt = "0.1.5"
