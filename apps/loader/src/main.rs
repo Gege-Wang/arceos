@@ -8,10 +8,36 @@ use axstd::println;
 #[macro_use]
 #[cfg(feature = "axstd")]
 extern crate axstd as std;
+use axhal::misc::terminate;
 
 use std::vec::Vec;
 use core::ptr;
 const PLASH_START: usize = 0x22000000;
+
+const SYS_HELLO: usize = 1;
+const SYS_PUTCHAR: usize = 2;
+const SYS_TERMINATE: usize = 3;
+
+static mut ABI_TABLE: [usize; 16] = [0; 16];
+
+fn register_abi(num: usize, handle: usize) {
+    unsafe { ABI_TABLE[num] = handle; }
+}
+
+fn abi_hello() {
+    println!("[ABI:Hello] Hello, Apps!");
+}
+
+fn abi_putchar(c: char) {
+    println!("[ABI:Print] {c}");
+}
+
+fn abi_terminate() {
+    println!("[ABI:Terminate]");
+    terminate();
+
+}
+
 
 struct AppHeader {
     apps_num: usize,
@@ -50,8 +76,18 @@ impl AppHeader {
     
 }
 
+
+
 #[cfg_attr(feature = "axstd", no_mangle)]
 fn main() {
+    register_abi(SYS_HELLO, abi_hello as usize);
+    register_abi(SYS_PUTCHAR, abi_putchar as usize);
+    register_abi(SYS_TERMINATE, abi_terminate as usize);
+
+    println!("Execute app ...");
+    let arg0: u8 = b'A';
+
+
     let pflash_start = PLASH_START as *const u8;
     let app_info = AppHeader::read_from_pflash(pflash_start);
     let num = app_info.apps_num;
@@ -73,6 +109,19 @@ fn main() {
     // 0xffff_ffc0_0000_0000
     const RUN_START:usize= 0xffff_ffc0_8010_0000;
 
+            // execute app
+    unsafe { core::arch::asm!("
+        li      t0, {abi_num}
+        slli    t0, t0, 3
+        la      t1, {abi_table}
+        add     t1, t1, t0
+        ld      t1, (t1)
+        jalr    t1",
+        abi_table = sym ABI_TABLE,
+        //abi_num = const SYS_HELLO,
+        abi_num = const SYS_TERMINATE,
+    )}
+
     for i in 0..num {
         let app_size = app_info.app_size[i];
         let app_start = app_info.app_start[i];
@@ -90,9 +139,18 @@ fn main() {
 
         // execute app
         unsafe { core::arch::asm!("
+            li      t0, {abi_num}
+            slli    t0, t0, 3
+            la      t1, {abi_table}
+            add     t1, t1, t0
+            ld      t1, (t1)
+            jalr    t1
             li      t2, {run_start}
             jalr    t1, t2",
             run_start = const RUN_START,
+            abi_table = sym ABI_TABLE,
+            //abi_num = const SYS_HELLO,
+            abi_num = const SYS_PUTCHAR,
         )}
         // 清除 run_code 中的内容，将所有字节设为 0
         let clear_value = 0;
