@@ -26,6 +26,7 @@ fn register_abi(num: usize, handle: usize) {
 
 fn abi_hello() {
     println!("[ABI:Hello] Hello, Apps!");
+    println!("");
 }
 
 fn abi_putchar(c: char) {
@@ -109,19 +110,6 @@ fn main() {
     // 0xffff_ffc0_0000_0000
     const RUN_START:usize= 0xffff_ffc0_8010_0000;
 
-            // execute app
-    unsafe { core::arch::asm!("
-        li      t0, {abi_num}
-        slli    t0, t0, 3
-        la      t1, {abi_table}
-        add     t1, t1, t0
-        ld      t1, (t1)
-        jalr    t1",
-        abi_table = sym ABI_TABLE,
-        //abi_num = const SYS_HELLO,
-        abi_num = const SYS_TERMINATE,
-    )}
-
     for i in 0..num {
         let app_size = app_info.app_size[i];
         let app_start = app_info.app_start[i];
@@ -139,18 +127,12 @@ fn main() {
 
         // execute app
         unsafe { core::arch::asm!("
-            li      t0, {abi_num}
-            slli    t0, t0, 3
-            la      t1, {abi_table}
-            add     t1, t1, t0
-            ld      t1, (t1)
-            jalr    t1
+            la      a0, {abi_table}
             li      t2, {run_start}
-            jalr    t1, t2",
+            jalr    t2",
             run_start = const RUN_START,
             abi_table = sym ABI_TABLE,
-            //abi_num = const SYS_HELLO,
-            abi_num = const SYS_PUTCHAR,
+            clobber_abi("C")
         )}
         // 清除 run_code 中的内容，将所有字节设为 0
         let clear_value = 0;
