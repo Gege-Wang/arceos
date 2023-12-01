@@ -10,97 +10,68 @@ use axstd::println;
 extern crate axstd as std;
 use axhal::misc::terminate;
 
+use xmas_elf;
+use axhal::mem::VirtAddr;
 use std::vec::Vec;
 use core::ptr;
 const PLASH_START: usize = 0x22000000;
 
-const SYS_HELLO: usize = 1;
-const SYS_PUTCHAR: usize = 2;
-const SYS_TERMINATE: usize = 3;
-
-static mut ABI_TABLE: [usize; 16] = [0; 16];
-
-fn register_abi(num: usize, handle: usize) {
-    unsafe { ABI_TABLE[num] = handle; }
-}
-
-fn abi_hello() {
-    println!("[ABI:Hello] Hello, Apps!");
-    println!("");
-}
-
-fn abi_putchar(c: char) {
-    println!("[ABI:Print] {c}");
-}
-
-fn abi_terminate() {
-    println!("[ABI:Terminate]");
-    terminate();
-
-}
 
 
-struct AppHeader {
-    apps_num: usize,
-    app_size: Vec<usize>,
-    app_start: Vec<*const u8>,
-}
 
-impl AppHeader {
-    fn read_from_pflash (pflash_start: *const u8) -> Self {
-        let mut offset = 0;
-        let usize_value:&[u8] = unsafe{ core::slice::from_raw_parts(pflash_start.offset(offset as isize), 8) };
-        let apps_num = bytes_to_usize(usize_value);
-        //println!("app num {:?}\n", apps_num);
-        let mut app_size = Vec::new();
-        let mut app_start = Vec::new();
+// struct AppHeader {
+//     apps_num: usize,
+//     app_size: Vec<usize>,
+//     app_start: Vec<*const u8>,
+// }
+
+// impl AppHeader {
+//     fn read_from_pflash (pflash_start: *const u8) -> Self {
+//         let mut offset = 0;
+//         let usize_value:&[u8] = unsafe{ core::slice::from_raw_parts(pflash_start.offset(offset as isize), 8) };
+//         let apps_num = bytes_to_usize(usize_value);
+//         //println!("app num {:?}\n", apps_num);
+//         let mut app_size = Vec::new();
+//         let mut app_start = Vec::new();
         
-        for _ in 0..apps_num {
-            offset += 8;
-            let value = bytes_to_usize(unsafe{ core::slice::from_raw_parts(pflash_start.offset(offset as isize), 8) });
-            app_size.push(value);
-        }
-        let mut app_start_offset = offset + 8;
+//         for _ in 0..apps_num {
+//             offset += 8;
+//             let value = bytes_to_usize(unsafe{ core::slice::from_raw_parts(pflash_start.offset(offset as isize), 8) });
+//             app_size.push(value);
+//         }
+//         let mut app_start_offset = offset + 8;
 
-        for i in 0..apps_num {
-            //println!("app {} start at {}\n", i, app_start_offset );
-            app_start.push((PLASH_START + app_start_offset )as *const u8);
-            app_start_offset += app_size[i];
-        }
+//         for i in 0..apps_num {
+//             //println!("app {} start at {}\n", i, app_start_offset );
+//             app_start.push((PLASH_START + app_start_offset )as *const u8);
+//             app_start_offset += app_size[i];
+//         }
 
-        AppHeader { 
-            apps_num,
-            app_size, 
-            app_start,
-        }
-    }
+//         AppHeader { 
+//             apps_num,
+//             app_size, 
+//             app_start,
+//         }
+//     }
     
-}
+// }
 
 
 
 #[cfg_attr(feature = "axstd", no_mangle)]
 fn main() {
-    register_abi(SYS_HELLO, abi_hello as usize);
-    register_abi(SYS_PUTCHAR, abi_putchar as usize);
-    register_abi(SYS_TERMINATE, abi_terminate as usize);
-
-    println!("Execute app ...");
-    let arg0: u8 = b'A';
-
 
     let pflash_start = PLASH_START as *const u8;
-    let app_info = AppHeader::read_from_pflash(pflash_start);
-    let num = app_info.apps_num;
+    //let app_info = AppHeader::read_from_pflash(pflash_start);
+    let num = 1;
     println!("Load payload ...\n");
     for i in 0..num {
-        let app_size = app_info.app_size[i];
-        let app_start = app_info.app_start[i];
+        let app_size = 15528;
+        let app_start = pflash_start;
         let code = unsafe {
             core::slice::from_raw_parts(app_start, app_size)
         };
         println!("load app {}, size is {}", i, app_size);
-        println!("content: {:?}\n", code);
     }
     
     println!("Load payload to pflash_disk ok!\n");
@@ -113,30 +84,71 @@ fn main() {
     // SBI(0x8000_0000) -> APP <- Kernel(0x8020_0000)
     // 0xffff_ffc0_0000_0000
     const RUN_START:usize= 0x4010_0000;
-
     for i in 0..num {
-        let app_size = app_info.app_size[i];
-        let app_start = app_info.app_start[i];
+        let app_size = 15528;
+        let app_start = pflash_start;
         let load_code = unsafe {
             core::slice::from_raw_parts(app_start, app_size)
         };
         println!("move app {}, size is {}", i, app_size);
-        println!("content: {:?}", load_code);
+        //println!("content: {:?}", load_code);
         let run_code = unsafe {
             core::slice::from_raw_parts_mut(RUN_START as *mut u8, app_size)
         };
-        run_code.copy_from_slice(load_code);
-        println!("run code {:?}; address [{:?}]", run_code, run_code.as_ptr());
+
+    let elf = xmas_elf::ElfFile::new(load_code).unwrap();
+    let elf_header = elf.header;
+    let magic = elf_header.pt1.magic;
+    let entry = elf.header.pt2.entry_point() as usize;
+    assert_eq!(magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
+    let ph_count = elf_header.pt2.ph_count();
+    let mut offset = 0;
+    for i in 0..ph_count {
+        let ph = elf.program_header(i).unwrap();
+        if ph.get_type().unwrap() == xmas_elf::program::Type::Load {
+            let start_va: VirtAddr = (ph.virtual_addr() as usize).into();
+            let size = ph.mem_size() as usize;
+            let end_va: VirtAddr = ((ph.virtual_addr() + ph.mem_size()) as usize).into();
+            //error!("start_va {:x} end_va {:x}", start_va.0, end_va.0);
+            println!("start_va {:x} end_va {:x}", start_va, end_va);
+            // Ensure that the size does not exceed the capacity of run_code
+            assert!(offset + size <= run_code.len());
+            //计算 data 应该放在run_code的哪个 offset 的位置
+            println!("offset {}  size {}", offset, size);
+            // 将数据从 load_code copy 到 run_code 的 offset 的 位置上
+            let load_code_slice = &load_code[ph.offset() as usize..(ph.offset() as usize + size) as usize];
+            let run_code_slice = &mut run_code[offset..(offset + size)];  
+
+            // Use unsafe pointer-based copy for efficiency
+            unsafe {
+                ptr::copy_nonoverlapping(load_code_slice.as_ptr(), run_code_slice.as_mut_ptr(), size);
+            }   
+
+            offset += size;       
+
+            // 输出当前加载的段的信息
+            println!(
+                "Loaded segment {}: start_va={:x}, size={}, offset={}, next_offset={}",
+                i,
+                ph.virtual_addr(),
+                size,
+                offset - size,
+                offset
+            );
+            // 输出加载的数据内容
+            //println!("Data content: {:?}", run_code_slice);
+        }
+    }
+
         println!("Execute app ...\n");
 
         // execute app
         unsafe { core::arch::asm!("
-            la      a0, {abi_table}
             li      t2, {run_start}
+            add     t2, t2, {entry}
             jalr    t2",
             run_start = const RUN_START,
-            abi_table = sym ABI_TABLE,
-            clobber_abi("C")
+            entry = in(reg) entry,
         )}
         // 清除 run_code 中的内容，将所有字节设为 0
         let clear_value = 0;
