@@ -83,7 +83,8 @@ fn main() {
     // app running aspace
     // SBI(0x8000_0000) -> APP <- Kernel(0x8020_0000)
     // 0xffff_ffc0_0000_0000
-    const RUN_START:usize= 0x4010_0000;
+    //const RUN_START:usize= 0x4010_0000;
+    const RUN_START:usize = 0x0;
     for i in 0..num {
         let app_size = 15528;
         let app_start = pflash_start;
@@ -100,6 +101,7 @@ fn main() {
     let elf_header = elf.header;
     let magic = elf_header.pt1.magic;
     let entry = elf.header.pt2.entry_point() as usize;
+    println!("{:x}", entry);
     assert_eq!(magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
     let ph_count = elf_header.pt2.ph_count();
     let mut offset = 0;
@@ -142,7 +144,13 @@ fn main() {
 
         println!("Execute app ...\n");
 
+        //li      t3, 0
+        //mv      a0, t3
         // execute app
+        // li      t4, 0
+        // mv      a2, t4
+        // li      t3, 0
+        // mv      a1, t3
         unsafe { core::arch::asm!("
             li      t2, {run_start}
             add     t2, t2, {entry}
