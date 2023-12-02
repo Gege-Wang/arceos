@@ -16,7 +16,14 @@ use std::vec::Vec;
 use core::ptr;
 const PLASH_START: usize = 0x22000000;
 
+fn printf() {
+    println!("printf function");
+}
 
+fn __libc_start_main() {
+    println!("__libc_main_start");
+    printf();
+}
 
 
 // struct AppHeader {
@@ -83,8 +90,8 @@ fn main() {
     // app running aspace
     // SBI(0x8000_0000) -> APP <- Kernel(0x8020_0000)
     // 0xffff_ffc0_0000_0000
-    //const RUN_START:usize= 0x4010_0000;
-    const RUN_START:usize = 0x0;
+    const RUN_START:usize= 0x4010_0000;
+    //const RUN_START:usize = 0x0;
     for i in 0..num {
         let app_size = 15528;
         let app_start = pflash_start;
@@ -141,6 +148,16 @@ fn main() {
             //println!("Data content: {:?}", run_code_slice);
         }
     }
+        let offset_printf = printf as *const() as usize;
+        let offset_libc_start_main = __libc_start_main as *const() as usize;
+        let address_printf= unsafe{
+            core::slice::from_raw_parts_mut((RUN_START + 0x2018) as *mut usize, 1)
+        };
+        address_printf[0] = offset_printf;
+        let address_libc_start_main= unsafe{
+            core::slice::from_raw_parts_mut((RUN_START + 0x2020) as *mut usize, 1)
+        };
+        address_libc_start_main[0] = offset_libc_start_main;
 
         println!("Execute app ...\n");
 
