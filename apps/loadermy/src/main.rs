@@ -20,14 +20,10 @@ fn printf() {
     println!("printf function");
 }
 
-fn find_main() {
-    unimplemented!();
-}
 fn __libc_start_main() {
     println!("__libc_main_start");
-    find_main();
+    printf();
 }
-
 
 #[cfg_attr(feature = "axstd", no_mangle)]
 fn main() {
@@ -37,7 +33,7 @@ fn main() {
     let num = 1;
     println!("Load payload ...\n");
     for i in 0..num {
-        let app_size = 15528;
+        let app_size = 0x0000000000479700;
         let app_start = pflash_start;
         let code = unsafe {
             core::slice::from_raw_parts(app_start, app_size)
@@ -53,11 +49,11 @@ fn main() {
 
     // app running aspace
     // SBI(0x8000_0000) -> APP <- Kernel(0x8020_0000)
-    // 0xffff_ffc0_0000_0000
-    const RUN_START:usize= 0x4010_0000;
-    //const RUN_START:usize = 0x0;
+    //0xffff_ffc0_0000_0000
+    //const RUN_START:usize= 0x4010_0000;
+    const RUN_START:usize = 0x0000_0000;
     for i in 0..num {
-        let app_size = 15528;
+        let app_size = 0x0000000000479700;
         let app_start = pflash_start;
         let load_code = unsafe {
             core::slice::from_raw_parts(app_start, app_size)
@@ -77,62 +73,71 @@ fn main() {
     let ph_count = elf_header.pt2.ph_count();
     let mut offset = 0;
     for i in 0..ph_count {
+        //println!("{}", i);
         let ph = elf.program_header(i).unwrap();
         if ph.get_type().unwrap() == xmas_elf::program::Type::Load {
             let start_va: VirtAddr = (ph.virtual_addr() as usize).into();
             let size = ph.mem_size() as usize;
+            offset = ph.offset() as usize;
             let end_va: VirtAddr = ((ph.virtual_addr() + ph.mem_size()) as usize).into();
             //error!("start_va {:x} end_va {:x}", start_va.0, end_va.0);
             println!("start_va {:x} end_va {:x}", start_va, end_va);
             // Ensure that the size does not exceed the capacity of run_code
-            assert!(offset + size <= run_code.len());
+            //assert!(offset + size <= run_code.len());
             //计算 data 应该放在run_code的哪个 offset 的位置
             println!("offset {}  size {}", offset, size);
             // 将数据从 load_code copy 到 run_code 的 offset 的 位置上
+            let address = ph.virtual_addr() as *mut u8;
             let load_code_slice = &load_code[ph.offset() as usize..(ph.offset() as usize + size) as usize];
-            let run_code_slice = &mut run_code[offset..(offset + size)];  
+            //let run_code_slice = &mut run_code[offset..(offset + size)];  
+            let run_code_slice = unsafe{core::slice::from_raw_parts_mut(address, size)};
 
             // Use unsafe pointer-based copy for efficiency
             unsafe {
-                ptr::copy_nonoverlapping(load_code_slice.as_ptr(), run_code_slice.as_mut_ptr(), size);
+                //ptr::copy_nonoverlapping(load_code_slice.as_ptr(), run_code_slice.as_mut_ptr(), size);
+                run_code_slice.copy_from_slice(load_code_slice);
             }   
 
-            offset += size;       
+            //println!("{}", i);
+            //offset += size;       
 
             // 输出当前加载的段的信息
-            println!(
-                "Loaded segment {}: start_va={:x}, size={}, offset={}, next_offset={}",
-                i,
-                ph.virtual_addr(),
-                size,
-                offset - size,
-                offset
-            );
+            // println!(
+            //     "Loaded segment {}: start_va={:x}, size={}, offset={}, next_offset={}",
+            //     i,
+            //     ph.virtual_addr(),
+            //     size,
+            //     offset,
+            //     offset
+            // );
             // 输出加载的数据内容
             //println!("Data content: {:?}", run_code_slice);
+            
         }
     }
-        let offset_printf = printf as *const() as usize;
-        let offset_libc_start_main = __libc_start_main as *const() as usize;
-        let address_printf= unsafe{
-            core::slice::from_raw_parts_mut((RUN_START + 0x2018) as *mut usize, 1)
-        };
-        address_printf[0] = offset_printf;
-        let address_libc_start_main= unsafe{
-            core::slice::from_raw_parts_mut((RUN_START + 0x2020) as *mut usize, 1)
-        };
-        address_libc_start_main[0] = offset_libc_start_main;
+        // let offset_printf = printf as *const() as usize;
+        // let offset_libc_start_main = __libc_start_main as *const() as usize;
+        // let address_printf= unsafe{
+        //     core::slice::from_raw_parts_mut((RUN_START + 0x2018) as *mut usize, 1)
+        // };
+        // address_printf[0] = offset_printf;
+        // let address_libc_start_main= unsafe{
+        //     core::slice::from_raw_parts_mut((RUN_START + 0x2020) as *mut usize, 1)
+        // };
+        // address_libc_start_main[0] = offset_libc_start_main;
 
         println!("Execute app ...\n");
 
-        //li      t3, 0
-        //mv      a0, t3
+
         // execute app
-        // li      t4, 0
-        // mv      a2, t4
+
         // li      t3, 0
         // mv      a1, t3
         unsafe { core::arch::asm!("
+        li      t3, 0
+        mv      a0, t3
+        li      t4, 0
+        mv      a2, t4
             li      t2, {run_start}
             add     t2, t2, {entry}
             jalr    t2",
@@ -150,7 +155,24 @@ fn main() {
 
 //
 // App aspace
+//
 
+#[link_section = ".data.app_page_table"]
+static mut APP_PT_SV39: [u64; 512] = [0; 512];
+
+unsafe fn init_app_page_table() {
+    // 0x8000_0000..0xc000_0000, VRWX_GAD, 1G block
+    APP_PT_SV39[2] = (0x80000 << 10) | 0xef;
+    // 0xffff_ffc0_8000_0000..0xffff_ffc0_c000_0000, VRWX_GAD, 1G block
+    APP_PT_SV39[0x102] = (0x80000 << 10) | 0xef;
+
+    // 0x0000_0000..0x4000_0000, VRWX_GAD, 1G block
+    APP_PT_SV39[0] = (0x00000 << 10) | 0xef;
+
+    // For App aspace!
+    // 0x4000_0000..0x8000_0000, VRWX_GAD, 1G block
+    APP_PT_SV39[1] = (0x80000 << 10) | 0xef;
+}
 
 unsafe fn switch_app_aspace() {
     use riscv::register::satp;

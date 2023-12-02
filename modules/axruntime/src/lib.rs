@@ -29,6 +29,8 @@ mod trap;
 #[cfg(feature = "smp")]
 mod mp;
 
+use axhal::arch::write_page_table_root;
+
 #[cfg(feature = "smp")]
 pub use self::mp::rust_main_secondary;
 
@@ -84,7 +86,7 @@ impl axlog::LogIf for LogIfImpl {
     }
 }
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{sync::atomic::{AtomicUsize, Ordering}, cell::OnceCell};
 
 static INITED_CPUS: AtomicUsize = AtomicUsize::new(0);
 
@@ -230,12 +232,25 @@ fn init_allocator() {
 }
 
 #[cfg(feature = "paging")]
+static mut KERNEL_PAGE_TABLE: OnceCell<PageTable> = OnceCell::new();
+#[cfg(feature = "paging")]
+// 建立应用的地址空间，现在应用和内核的地址空间相同
+static mut APP_PG_DIR: OnceCell<PageTable> = OnceCell::new();
+pub fn init_pg_dir() {
+    unsafe {
+        if APP_PG_DIR.get().is_none() {
+            APP_PG_DIR = KERNEL_PAGE_TABLE.clone();
+        }
+        write_page_table_root(APP_PG_DIR.get().unwrap().root_paddr());
+    }
+}
+
+#[cfg(feature = "paging")]
 fn remap_kernel_memory() -> Result<(), axhal::paging::PagingError> {
     use axhal::mem::{memory_regions, phys_to_virt};
     use axhal::paging::PageTable;
-    use lazy_init::LazyInit;
-
-    static KERNEL_PAGE_TABLE: LazyInit<PageTable> = LazyInit::new();
+    //use lazy_init::LazyInit;
+    //static KERNEL_PAGE_TABLE: LazyInit<PageTable> = LazyInit::new();
 
     if axhal::cpu::this_cpu_is_bsp() {
         let mut kernel_page_table = PageTable::try_new()?;
@@ -248,10 +263,15 @@ fn remap_kernel_memory() -> Result<(), axhal::paging::PagingError> {
                 true,
             )?;
         }
-        KERNEL_PAGE_TABLE.init_by(kernel_page_table);
+        unsafe {
+            let _ = KERNEL_PAGE_TABLE.set(pt);
+            write_page_table_root(KERNEL_PAGE_TABLE.get().unwrap().root_paddr());
+        }
+    }else{
+        unimplemented!("Handle it for SMP specifically!")
     }
 
-    unsafe { axhal::arch::write_page_table_root(KERNEL_PAGE_TABLE.root_paddr()) };
+    //unsafe { axhal::arch::write_page_table_root(KERNEL_PAGE_TABLE.root_paddr()) };
     Ok(())
 }
 

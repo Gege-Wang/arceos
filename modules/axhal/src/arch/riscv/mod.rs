@@ -7,6 +7,10 @@ mod trap;
 use memory_addr::{PhysAddr, VirtAddr};
 use riscv::asm;
 use riscv::register::{satp, sstatus, stvec};
+use core::cell::OnceCell;
+use crate::paging::PageTable;
+use page_table::PagingResult;
+use crate::mem::MemRegionFlags;
 
 pub use self::context::{GeneralRegisters, TaskContext, TrapFrame};
 

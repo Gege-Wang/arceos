@@ -30,6 +30,7 @@
 #![feature(const_maybe_uninit_zeroed)]
 #![feature(const_option)]
 #![feature(doc_auto_cfg)]
+#![feature(thread_local)]
 
 #[allow(unused_imports)]
 #[macro_use]

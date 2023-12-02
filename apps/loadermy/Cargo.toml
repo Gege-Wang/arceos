@@ -1,0 +1,18 @@
+[package]
+name = "loader"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# elf = "0.7.4"
+elf_rs = "0.3.1"
+xmas-elf = "0.9.1"
+axstd = { path = "../../ulib/axstd", features = ["paging", "alloc", "multitask", "irq", "tls" ], optional = true }
+axhal = { path = "../../modules/axhal" }
+axconfig = { path = "../../modules/axconfig" }
+memory_addr = { path = "../../crates/memory_addr" }
+
+[target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
+riscv = "0.10"
