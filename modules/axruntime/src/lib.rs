@@ -30,6 +30,8 @@ mod trap;
 mod mp;
 
 use axhal::arch::write_page_table_root;
+use axhal::arch::setup_page_table_root;
+use axhal::arch::init_app_page_table;
 
 #[cfg(feature = "smp")]
 pub use self::mp::rust_main_secondary;
@@ -231,19 +233,7 @@ fn init_allocator() {
     }
 }
 
-#[cfg(feature = "paging")]
-static mut KERNEL_PAGE_TABLE: OnceCell<PageTable> = OnceCell::new();
-#[cfg(feature = "paging")]
-// 建立应用的地址空间，现在应用和内核的地址空间相同
-static mut APP_PG_DIR: OnceCell<PageTable> = OnceCell::new();
-pub fn init_pg_dir() {
-    unsafe {
-        if APP_PG_DIR.get().is_none() {
-            APP_PG_DIR = KERNEL_PAGE_TABLE.clone();
-        }
-        write_page_table_root(APP_PG_DIR.get().unwrap().root_paddr());
-    }
-}
+
 
 #[cfg(feature = "paging")]
 fn remap_kernel_memory() -> Result<(), axhal::paging::PagingError> {
@@ -263,10 +253,7 @@ fn remap_kernel_memory() -> Result<(), axhal::paging::PagingError> {
                 true,
             )?;
         }
-        unsafe {
-            let _ = KERNEL_PAGE_TABLE.set(pt);
-            write_page_table_root(KERNEL_PAGE_TABLE.get().unwrap().root_paddr());
-        }
+        setup_page_table_root(kernel_page_table);
     }else{
         unimplemented!("Handle it for SMP specifically!")
     }

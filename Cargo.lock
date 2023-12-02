@@ -1224,6 +1224,7 @@ dependencies = [
  "axhal",
  "axstd",
  "elf_rs",
+ "memory_addr",
  "riscv",
  "xmas-elf",
 ]
