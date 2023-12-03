@@ -70,6 +70,8 @@ fn main() {
     assert_eq!(magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
 
     let ph_count = elf_header.pt2.ph_count();
+
+    let mut end = 0;
     for i in 0..ph_count {
         let ph = elf.program_header(i).unwrap();
         if ph.get_type().unwrap() == xmas_elf::program::Type::Load {
@@ -89,7 +91,12 @@ fn main() {
             // Use unsafe pointer-based copy for efficiency
             unsafe {
                 ptr::copy_nonoverlapping(load_code_slice.as_ptr(), run_code_slice.as_mut_ptr(), size);
-            }   
+            }  
+
+            
+            if end < va_end {
+                end = va_end;
+            } 
         }
     }
         // let offset_printf = printf as *const() as usize;
@@ -103,14 +110,51 @@ fn main() {
         // };
         // address_libc_start_main[0] = offset_libc_start_main;
 
+        const TASK_SIZE: usize = 0x40_0000_0000;
+        let pa = vm::alloc_pages(1, PAGE_SIZE_4K);
+        let va = TASK_SIZE - PAGE_SIZE_4K;
+        println!("va: {:#x} pa: {:#x}", va, pa);
+        vm::map_region(va, pa, PAGE_SIZE_4K,
+            vm::READ | vm::WRITE | vm::EXECUTE);
+        let sp = TASK_SIZE - 32;
+        let stack = unsafe {
+            core::slice::from_raw_parts_mut(
+                sp as *mut usize, 4
+            )
+        };
+        stack[0] = 0;
+        stack[1] = TASK_SIZE - 16;
+        stack[2] = 0;
+        stack[3] = 0;
+
+
+        println!("set brk...");
+        vm::set_brk(end);
+
+        let pa = vm::alloc_pages(4, PAGE_SIZE_4K);
+        vm::map_region(end, pa, 4*PAGE_SIZE_4K, vm::READ | vm::WRITE | vm::EXECUTE);
+        println!("### app end: {:#X}; {:#X}", end, vm::get_brk());
+        //setup_zero_page();
+
         println!("Execute app ...\n");
 
         unsafe { core::arch::asm!("
-            mv      t2, {entry}
-            jalr    t2",
-            entry = in(reg) entry,
-        )}
+        jalr    t2
+        j       .",
+        in("t0") entry,
+        in("t1") sp,
+        in("t2") start_app,
+    )};
+
+    extern "C" {
+        fn start_app();
+    }
 
 
 }
 
+fn setup_zero_page() {
+    let pa = vm::alloc_pages(1, PAGE_SIZE_4K);
+    vm::map_region(0x0, pa, PAGE_SIZE_4K,
+        vm::READ | vm::WRITE | vm::EXECUTE);
+}
